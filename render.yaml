@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: hiresphere-ai
+    runtime: docker
+    plan: 0.5c-512mb
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    disk:
+      name: hiresphere-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        value: file:/var/data/hiresphere.db
+      - key: UPLOAD_DIR
+        value: /var/data/uploads/resumes
+      - key: SESSION_SECRET
+        generateValue: true

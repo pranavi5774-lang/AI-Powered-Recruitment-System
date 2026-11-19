@@ -7,7 +7,8 @@ import { z } from 'zod';
 import { ok, handler, getSession, requireAuth, parseBody, getPagination, paginated, logAudit, ApiError, clientIp } from '@/lib/api';
 import { db } from '@/lib/db';
 import { JOB_STATUS, EMPLOYMENT_TYPES } from '@/lib/constants';
-import { serializeJobSkills } from '@/lib/serialize';
+import { serializeJobEvaluation, serializeJobSkills } from '@/lib/serialize';
+import { DEFAULT_EVALUATION_WEIGHTS, DEFAULT_MATCH_THRESHOLDS } from '@/lib/constants';
 
 const JOB_SORT: Record<string, string> = {
   title: 'title',
@@ -73,6 +74,14 @@ export const GET = handler(async (req) => {
 });
 
 const skillsSchema = z.array(z.string().trim().min(1).max(60)).max(15, 'At most 15 skills');
+const weightKeys = Object.keys(DEFAULT_EVALUATION_WEIGHTS);
+const evaluationWeightsSchema = z.record(z.string(), z.number().int().min(0).max(100))
+  .refine((weights) => Object.keys(weights).length === weightKeys.length && weightKeys.every((key) => key in weights) && Object.values(weights).reduce((sum, weight) => sum + weight, 0) === 100, 'Evaluation weights must include all 12 parameters and total 100');
+const matchThresholdsSchema = z.object({
+  strong: z.number().int().min(1).max(100),
+  potential: z.number().int().min(1).max(99),
+  moderate: z.number().int().min(0).max(98),
+}).refine((thresholds) => thresholds.strong > thresholds.potential && thresholds.potential > thresholds.moderate, 'Thresholds must descend from strong to moderate');
 
 export const createSchema = z.object({
   title: z.string().trim().min(3, 'Title must be at least 3 characters').max(120),
@@ -84,6 +93,8 @@ export const createSchema = z.object({
   educationReq: z.string().trim().max(200).nullish(),
   requiredSkills: skillsSchema.default([]),
   preferredSkills: skillsSchema.default([]),
+  evaluationWeights: evaluationWeightsSchema.default(DEFAULT_EVALUATION_WEIGHTS),
+  matchThresholds: matchThresholdsSchema.default(DEFAULT_MATCH_THRESHOLDS),
   salaryMin: z.coerce.number().min(0).nullish(),
   salaryMax: z.coerce.number().min(0).nullish(),
   openings: z.coerce.number().int().min(1).max(100).default(1),
@@ -114,6 +125,8 @@ export const POST = handler(async (req) => {
       educationReq: body.educationReq ?? null,
       requiredSkills: JSON.stringify(body.requiredSkills),
       preferredSkills: JSON.stringify(body.preferredSkills),
+      evaluationWeights: JSON.stringify(body.evaluationWeights),
+      matchThresholds: JSON.stringify(body.matchThresholds),
       salaryMin: body.salaryMin ?? null,
       salaryMax: body.salaryMax ?? null,
       openings: body.openings,
@@ -146,5 +159,5 @@ export const POST = handler(async (req) => {
     });
   }
 
-  return ok({ ...job, ...serializeJobSkills(job) }, 201);
+  return ok({ ...job, ...serializeJobSkills(job), ...serializeJobEvaluation(job) }, 201);
 });

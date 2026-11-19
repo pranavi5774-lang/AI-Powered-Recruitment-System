@@ -419,7 +419,7 @@ export function PublicJobDetailPage({ params }: { params: Record<string, string>
                       </RadioGroup>
                     </div>
                     <Button
-                      className="min-h-11 w-full gap-2"
+                      className="btn-apply-pulse min-h-11 w-full gap-2 bg-gradient-to-r from-[oklch(0.60_0.22_155)] to-[oklch(0.55_0.20_175)] text-white hover:opacity-90"
                       onClick={() => void handleApply()}
                       disabled={applying || !selectedResumeId}
                       aria-label={`Apply to ${job.title}`}

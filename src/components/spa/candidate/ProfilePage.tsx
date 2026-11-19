@@ -67,7 +67,15 @@ type ResumeDetail = ResumeRow & {
     experienceYears?: number | null
     certifications?: string | null
     projects?: string | null
+    academicCourses?: string | null
+    internshipExperience?: string | null
+    workExperience?: string | null
+    achievements?: string | null
     skills?: string[]
+    programmingLanguages?: string[]
+    frameworks?: string[]
+    technologies?: string[]
+    tools?: string[]
     wordCount?: number | null
   } | null
 }
@@ -85,7 +93,7 @@ type CandidateProfile = {
   githubUrl: string | null
 }
 
-const ACCEPT_MIME = 'application/pdf'
+const ACCEPT_MIME = '.pdf,.docx'
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -130,6 +138,8 @@ function ResumeManager() {
   const [progress, setProgress] = useState(0)
   const [dragOver, setDragOver] = useState(false)
   const [lastUpload, setLastUpload] = useState<ResumeDetail | null>(null)
+  const [parsedDraft, setParsedDraft] = useState<NonNullable<ResumeDetail['parsedData']> | null>(null)
+  const [savingParsed, setSavingParsed] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [previewOpenId, setPreviewOpenId] = useState<string | null>(null)
@@ -156,8 +166,8 @@ function ResumeManager() {
 
   const uploadFile = useCallback(
     (file: File) => {
-      if (file.type !== ACCEPT_MIME) {
-        toast.error('Only PDF resumes are accepted.', { description: `Got “${file.type || file.name}”.` })
+      if (!/\.(pdf|docx)$/i.test(file.name)) {
+        toast.error('Only PDF or DOCX resumes are accepted.', { description: `Got “${file.type || file.name}”.` })
         return
       }
       if (file.size > RESUME_MAX_SIZE) {
@@ -205,6 +215,7 @@ function ResumeManager() {
                 : 'Uploaded, but automatic parsing failed. You can still apply with it.',
           })
           setLastUpload(resume)
+          setParsedDraft(resume.parsedData)
           await load()
         } else {
           const message =
@@ -265,7 +276,7 @@ function ResumeManager() {
           <div
             role="button"
             tabIndex={0}
-            aria-label="Upload a PDF resume"
+            aria-label="Upload a PDF or DOCX resume"
             onClick={() => !uploading && fileInputRef.current?.click()}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
@@ -306,7 +317,7 @@ function ResumeManager() {
                 <p className="text-sm font-medium">
                   Drag &amp; drop your resume, or <span className="text-primary underline underline-offset-2">browse</span>
                 </p>
-                <p className="text-xs text-muted-foreground">PDF only · up to 5 MB</p>
+                <p className="text-xs text-muted-foreground">PDF or DOCX · up to 5 MB</p>
               </>
             )}
             <input
@@ -382,6 +393,54 @@ function ResumeManager() {
             </div>
           ) : null}
 
+          {lastUpload?.parseStatus === 'SUCCESS' && parsedDraft ? (
+            <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
+              <div>
+                <p className="text-sm font-medium">Review extracted details</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Correct anything before applying. Unavailable details remain Not Provided; account email is not changed.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormField label="Extracted name" value={parsedDraft.name ?? ''} onChange={(value) => setParsedDraft((prev) => prev ? { ...prev, name: value } : prev)} placeholder="Not Provided" />
+                <FormField label="Resume email" value={parsedDraft.email ?? ''} onChange={(value) => setParsedDraft((prev) => prev ? { ...prev, email: value } : prev)} placeholder="Not Provided" />
+                <FormField label="Phone" value={parsedDraft.phone ?? ''} onChange={(value) => setParsedDraft((prev) => prev ? { ...prev, phone: value } : prev)} placeholder="Not Provided" />
+                <FormField label="Education" value={parsedDraft.education ?? ''} onChange={(value) => setParsedDraft((prev) => prev ? { ...prev, education: value } : prev)} placeholder="Not Provided" />
+                <FormField label="Experience (years)" value={parsedDraft.experienceYears == null ? '' : String(parsedDraft.experienceYears)} onChange={(value) => setParsedDraft((prev) => prev ? { ...prev, experienceYears: value ? Number(value) : null } : prev)} placeholder="Not Provided" inputMode="numeric" />
+                <FormField label="Skills (comma separated)" value={parsedDraft.skills?.join(', ') ?? ''} onChange={(value) => setParsedDraft((prev) => prev ? { ...prev, skills: value.split(',').map((skill) => skill.trim()).filter(Boolean) } : prev)} placeholder="Not Provided" />
+                <div className="sm:col-span-2">
+                  <Label htmlFor="resume-projects" className="text-sm font-medium">Projects</Label>
+                  <Textarea id="resume-projects" rows={3} value={parsedDraft.projects ?? ''} onChange={(event) => setParsedDraft((prev) => prev ? { ...prev, projects: event.target.value } : prev)} placeholder="Not Provided" />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  className="min-h-9 gap-1.5"
+                  disabled={savingParsed}
+                  onClick={async () => {
+                    if (!lastUpload) return
+                    setSavingParsed(true)
+                    try {
+                      const { wordCount: _wordCount, ...editableData } = parsedDraft
+                      const result = await patch<{ parsedData: ResumeDetail['parsedData'] }>(`/api/resumes/${lastUpload.id}`, editableData)
+                      setLastUpload((current) => current ? { ...current, parsedData: result.parsedData } : current)
+                      await useAuthStore.getState().fetchMe()
+                      toast.success('Resume details saved to your candidate profile.')
+                    } catch (error) {
+                      toast.error(error instanceof Error ? error.message : 'Could not save resume details')
+                    } finally {
+                      setSavingParsed(false)
+                    }
+                  }}
+                >
+                  {savingParsed ? <Spinner className="size-3.5" /> : <Save className="size-3.5" aria-hidden="true" />}
+                  Save corrected details
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
           {/* Resume list */}
           {error ? (
             <ErrorState message={error} onRetry={() => void load()} />
@@ -393,7 +452,7 @@ function ResumeManager() {
             </div>
           ) : !resumes || resumes.items.length === 0 ? (
             <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-              No resumes yet. Upload your first PDF above to unlock one-click applications.
+              No resumes yet. Upload your first PDF or DOCX above to unlock one-click applications.
             </p>
           ) : (
             <ul className="space-y-2" aria-label="My resumes">

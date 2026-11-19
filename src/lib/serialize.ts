@@ -25,6 +25,12 @@ export interface AnalysisRow {
   missingSkills: string;
   extraSkills: string | null;
   extractedInfo: string | null;
+  parameterScores: string;
+  parameterWeights: string;
+  strengths: string;
+  skillGaps: string;
+  recommendation: string;
+  detailedExplanation: string | null;
   summary: string | null;
   algorithmVersion: string;
   createdAt: Date;
@@ -44,6 +50,21 @@ export function serializeAnalysis(row: AnalysisRow | null | undefined) {
     missingSkills: parseJson<string[]>(row.missingSkills, []),
     extraSkills: parseJson<string[]>(row.extraSkills, []),
     extractedInfo: parseJson<Record<string, unknown> | null>(row.extractedInfo, null),
+    parameterScores: parseJson<{
+      key: string;
+      name: string;
+      score: number;
+      weight: number;
+      contribution: number;
+      explanation: string;
+      evidence: string[];
+      gaps: string[];
+    }[]>(row.parameterScores, []),
+    parameterWeights: parseJson<Record<string, number>>(row.parameterWeights, {}),
+    strengths: parseJson<string[]>(row.strengths, []),
+    skillGaps: parseJson<string[]>(row.skillGaps, []),
+    recommendation: row.recommendation,
+    detailedExplanation: row.detailedExplanation,
     summary: row.summary,
     algorithmVersion: row.algorithmVersion,
     createdAt: row.createdAt,
@@ -62,5 +83,29 @@ export function serializeJobSkills(job: { requiredSkills: string; preferredSkill
   return {
     requiredSkills: parseJson<string[]>(job.requiredSkills, []),
     preferredSkills: parseJson<string[]>(job.preferredSkills, []),
+  };
+}
+
+export function serializeJobEvaluation(job: { evaluationWeights: string; matchThresholds: string }) {
+  return {
+    evaluationWeights: parseJson<Record<string, number>>(job.evaluationWeights, {
+      requiredSkills: 20,
+      education: 10,
+      projects: 10,
+      experience: 10,
+      technicalKnowledge: 10,
+      certifications: 5,
+      keywordMatch: 10,
+      domainKnowledge: 5,
+      tools: 5,
+      problemSolving: 5,
+      achievements: 5,
+      resumeClarity: 5,
+    }),
+    matchThresholds: parseJson<{ strong: number; potential: number; moderate: number }>(job.matchThresholds, {
+      strong: 80,
+      potential: 65,
+      moderate: 50,
+    }),
   };
 }

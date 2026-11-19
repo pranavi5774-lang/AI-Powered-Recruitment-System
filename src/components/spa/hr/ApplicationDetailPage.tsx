@@ -86,6 +86,21 @@ type Analysis = {
     certifications?: string | null
     projects?: string | null
   } | null
+    parameterWeights: Record<string, number>
+    parameterScores: {
+      key: string
+      name: string
+      score: number
+      weight: number
+      contribution: number
+      explanation: string
+      evidence: string[]
+      gaps: string[]
+    }[]
+    strengths: string[]
+    skillGaps: string[]
+    recommendation: string
+    detailedExplanation: string | null
   summary: string | null
   algorithmVersion: string
   createdAt: string
@@ -150,6 +165,21 @@ type AppDetail = {
     notes: string | null
     status: string
   }[]
+  hrReviews: {
+    id: string
+    reviewerName: string
+    decision: string
+    reason: string | null
+    comments: string | null
+    createdAt: string
+  }[]
+  evaluationHistory: {
+    id: string
+    finalScore: number
+    recommendation: string
+    algorithmVersion: string
+    createdAt: string
+  }[]
 }
 
 type Department = { id: string; name: string }
@@ -176,6 +206,8 @@ export function ApplicationDetailPage({ params }: { params: Record<string, strin
   // workflow local state
   const [transitionNote, setTransitionNote] = React.useState('')
   const [notesDraft, setNotesDraft] = React.useState('')
+  const [reviewReason, setReviewReason] = React.useState('')
+  const [reviewComments, setReviewComments] = React.useState('')
 
   // interview dialog
   const [ivOpen, setIvOpen] = React.useState(false)
@@ -281,6 +313,29 @@ export function ApplicationDetailPage({ params }: { params: Record<string, strin
       toast.error(e instanceof Error ? e.message : 'Could not save notes')
     } finally {
       setBusy(null)
+    }
+  }
+
+  const recordReview = async (decision: 'APPROVED' | 'REJECTED' | 'OVERRIDDEN') => {
+      if (decision !== 'APPROVED' && !reviewReason.trim()) {
+        toast.error('Add a reason before rejecting or overriding the recommendation.')
+        return
+      }
+      setBusy(`review-${decision}`)
+      try {
+        await post(`/api/applications/${params.id}/reviews`, {
+          decision,
+          reason: reviewReason.trim() || undefined,
+          comments: reviewComments.trim() || undefined,
+        })
+        toast.success('Human review recorded.')
+        setReviewReason('')
+        setReviewComments('')
+        await load()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Could not save the review')
+      } finally {
+        setBusy(null)
     }
   }
 
@@ -407,7 +462,7 @@ export function ApplicationDetailPage({ params }: { params: Record<string, strin
                 size="sm"
                 className="min-h-9 gap-1.5"
                 onClick={() => window.open(`/api/resumes/${app.resume!.id}/download`, '_blank', 'noopener')}
-                aria-label="Open resume PDF in a new tab"
+                aria-label="Download the original resume"
               >
                 <Download className="size-4" aria-hidden="true" />
                 View Resume
@@ -489,6 +544,63 @@ export function ApplicationDetailPage({ params }: { params: Record<string, strin
                       </p>
                       {a.summary}
                     </div>
+                  ) : null}
+
+                  <div className="space-y-4 rounded-lg border p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold">Shortlisting recommendation: {label(a.recommendation)}</p>
+                        <p className="text-xs text-muted-foreground">Configurable HR thresholds; advisory only, never an automatic decision.</p>
+                      </div>
+                      <Badge variant="outline">{Math.round((a.finalScore ?? app.matchScore ?? 0) * 100)} / 100</Badge>
+                    </div>
+                    <div className="space-y-3">
+                      {a.parameterScores.map((parameter) => (
+                        <div key={parameter.key} className="space-y-1.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className="font-medium">{parameter.name} <span className="text-muted-foreground">({parameter.weight}%)</span></span>
+                            <span className="tabular-nums">{parameter.score}/100 · {parameter.contribution.toFixed(2)} weighted points</span>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={`${parameter.name} score`} aria-valuenow={parameter.score} aria-valuemin={0} aria-valuemax={100}>
+                            <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${parameter.score}%` }} />
+                          </div>
+                          <p className="text-xs text-muted-foreground">{parameter.explanation}</p>
+                          {parameter.evidence.length ? <p className="text-xs text-foreground/80">Evidence: {parameter.evidence.join(' · ')}</p> : null}
+                          {parameter.gaps.length ? <p className="text-xs text-amber-700 dark:text-amber-300">Not evidenced: {parameter.gaps.join(', ')}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-medium">Strengths with resume evidence</p>
+                        {a.strengths.length ? <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-muted-foreground">{a.strengths.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul> : <p className="mt-1 text-xs text-muted-foreground">No high-confidence strengths extracted.</p>}
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium">Skill gaps / information not provided</p>
+                        {a.skillGaps.length ? <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-muted-foreground">{a.skillGaps.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul> : <p className="mt-1 text-xs text-muted-foreground">No gaps were identified.</p>}
+                      </div>
+                    </div>
+                    <p className="border-t pt-3 text-xs leading-relaxed text-muted-foreground">
+                      {a.detailedExplanation ?? 'This deterministic score is based only on extracted resume evidence and job requirements. Not Provided is not proof of lacking a qualification. HR retains all shortlist, rejection, interview, and hiring decisions.'}
+                    </p>
+                  </div>
+                  {app.evaluationHistory.length > 1 ? (
+                    <Collapsible>
+                      <CollapsibleTrigger className="group flex w-full items-center justify-between rounded-lg border p-3 text-sm font-medium hover:bg-accent/50">
+                        Previous evaluation snapshots ({app.evaluationHistory.length - 1})
+                        <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" aria-hidden="true" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <ul className="mt-2 space-y-2">
+                          {app.evaluationHistory.slice(1).map((entry) => (
+                            <li key={entry.id} className="flex flex-wrap justify-between gap-2 rounded-md border p-2 text-xs">
+                              <span>{formatDateTime(entry.createdAt)} · {entry.algorithmVersion}</span>
+                              <span className="font-medium">{Math.round(entry.finalScore * 100)}% · {label(entry.recommendation)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </CollapsibleContent>
+                    </Collapsible>
                   ) : null}
 
                   {/* matched skills */}
@@ -669,6 +781,42 @@ export function ApplicationDetailPage({ params }: { params: Record<string, strin
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+                <div>
+                  <p className="text-sm font-medium">Human review of AI recommendation</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Record your review separately. This does not change application status; use the workflow controls below for any status decision.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="review-reason">Reason (required for reject/override)</Label>
+                    <Input id="review-reason" value={reviewReason} onChange={(event) => setReviewReason(event.target.value)} maxLength={1000} placeholder="Explain the human review decision" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="review-comments">Review comments</Label>
+                    <Textarea id="review-comments" rows={2} value={reviewComments} onChange={(event) => setReviewComments(event.target.value)} maxLength={2000} placeholder="Optional notes for the review record" />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" disabled={busy?.startsWith('review-')} onClick={() => void recordReview('APPROVED')}>Approve recommendation</Button>
+                  <Button size="sm" variant="outline" className="text-destructive" disabled={busy?.startsWith('review-') || !reviewReason.trim()} onClick={() => void recordReview('REJECTED')}>Reject recommendation</Button>
+                  <Button size="sm" variant="outline" disabled={busy?.startsWith('review-') || !reviewReason.trim()} onClick={() => void recordReview('OVERRIDDEN')}>Override AI recommendation</Button>
+                </div>
+                {app.hrReviews.length ? (
+                  <div className="space-y-2 border-t pt-3">
+                    <p className="text-xs font-medium">Review history</p>
+                    {app.hrReviews.map((review) => (
+                      <div key={review.id} className="rounded-md bg-background/80 p-2 text-xs">
+                        <p className="font-medium">{label(review.decision)} · {review.reviewerName} · {formatDateTime(review.createdAt)}</p>
+                        {review.reason ? <p className="mt-1 text-muted-foreground">Reason: {review.reason}</p> : null}
+                        {review.comments ? <p className="mt-1 text-muted-foreground">{review.comments}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
               {transitions.length === 0 ? (
                 <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
                   {label(app.status)} is a terminal state — no further transitions are allowed by policy.
@@ -913,7 +1061,7 @@ export function ApplicationDetailPage({ params }: { params: Record<string, strin
                     onClick={() => window.open(`/api/resumes/${app.resume!.id}/download`, '_blank', 'noopener')}
                   >
                     <Download className="size-4" aria-hidden="true" />
-                    Open PDF
+                    Download resume
                   </Button>
                   {resumeText ? (
                     <Collapsible>
@@ -929,7 +1077,7 @@ export function ApplicationDetailPage({ params }: { params: Record<string, strin
                     </Collapsible>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      No text could be extracted — the PDF may be image-only. Use “Open PDF” to read it manually.
+                      No text could be extracted — the PDF may be image-only. Use “                      Download original resume” to read it manually.
                     </p>
                   )}
                 </>

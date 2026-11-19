@@ -24,17 +24,18 @@ Presentation (SPA)  →  Application/API (route handlers)  →  Domain services 
 - Response envelope: `{ ok: true, data }` | `{ ok: false, error: { code, message, details? } }` with correct HTTP statuses (400/401/403/404/409/422/429/500).
 
 ### Domain services
-- `src/lib/ai/analyze-service.ts` — orchestrates one analysis: load Application+Resume+Job → `analyzeResume()` → transaction (upsert `ResumeAnalysis`, snapshot scores onto `Application`).
+- `src/lib/ai/analyze-service.ts` — orchestrates one analysis: load Application+Resume+Job → deterministic NLP matching + `evaluateResume()` → transaction (upsert the latest `ResumeAnalysis`, append `EvaluationHistory`, snapshot scores onto `Application`).
 - AI engine modules (pure, deterministic, unit-testable):
   - `text-preprocessing.ts` — normalization, stopwords, light stemmer, sentence split, section extraction.
   - `skill-dictionary.ts` — ~85 canonical skills with alias patterns; returns evidence snippets.
   - `tfidf.ts` — scikit-learn-compatible TF-IDF (smooth idf, L2 norm) + cosine similarity + pool-ranking.
   - `resume-matcher.ts` — scoring composition, explanation builder, resume information extraction.
-  - `pdf-parser.ts` — magic-byte/type/size validation, unpdf extraction, safe filename generation.
+  - `multi-parameter-evaluator.ts` — 12 evidence-backed scores, weighted contributions, role thresholds, strengths, gaps, and recommendation explanation.
+  - `pdf-parser.ts` — PDF/DOCX validation, unpdf/Mammoth extraction, safe filename generation.
 
 ### Data
-- Prisma models (17) documented in `docs/database.md`; transactions via `db.$transaction` for multi-table writes.
-- Resume PDFs are stored in `uploads/resumes/` **outside** `public/`. They are never statically served — the only access path is `GET /api/resumes/:id/download`, which performs role/ownership checks per request.
+- Prisma models documented in `docs/database.md`; transactions via `db.$transaction` for multi-table writes.
+- Resume PDFs and DOCX files are stored in `uploads/resumes/` **outside** `public/`. They are never statically served — the only access path is `GET /api/resumes/:id/download`, which performs role/ownership checks per request.
 
 ## 2. Security model
 
@@ -63,11 +64,17 @@ POST /api/applications {jobId, resumeId}
  └─ resume ownership check                       → 403
  └─ db.$transaction:
       create Application (APPLIED) + history row
- └─ runAnalysisForApplication(appId)             → TF-IDF + skill overlap + evidence
-      upsert ResumeAnalysis, snapshot scores     (failure here never blocks the application)
+ └─ runAnalysisForApplication(appId)             → NLP + 12 weighted, evidence-backed scores
+      upsert latest analysis, append history     (failure here never blocks the application)
  └─ notify all HR users · audit APPLICATION_SUBMITTED
  └─ 201 { application with analysis summary }
 ```
+
+### Multi-parameter evaluation
+
+The default weights are Required Skills 20%, Education 10%, Projects 10%, Experience 10%, Technical Knowledge 10%, Certifications 5%, Job Keywords 10%, Domain Knowledge 5%, Tools 5%, Problem Solving 5%, Achievements 5%, and Resume Clarity 5%. HR/Admin can adjust all 12 integer weights per job; the API rejects configurations that do not total 100. Per-job recommendation thresholds default to 80/65/50 and must descend strictly.
+
+Scores use deterministic text/skill evidence and are stored with their weights, parameter explanations, evidence snippets, recommendation, and algorithm version. A missing item is reported as “Not Provided”/“not evidenced,” not as proof the candidate lacks it. Recommendations never change application status. HR decisions and reasons are recorded separately in `HRReview`; every evaluation run also appends an `EvaluationHistory` snapshot. The AI does not conduct interviews or make final recruitment decisions.
 
 ## 4. Frontend module map
 

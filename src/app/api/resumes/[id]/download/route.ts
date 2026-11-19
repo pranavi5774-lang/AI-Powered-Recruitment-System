@@ -10,7 +10,7 @@ import { resumeFilePath } from '@/lib/storage';
 
 function safeFileName(name: string): string {
   const clean = name.replace(/[^A-Za-z0-9._\- ]/g, '_').trim() || 'resume.pdf';
-  return clean.endsWith('.pdf') ? clean : `${clean}.pdf`;
+  return /\.(pdf|docx)$/i.test(clean) ? clean : `${clean}.pdf`;
 }
 
 export const GET = handler(async (req, ctx) => {
@@ -37,7 +37,7 @@ export const GET = handler(async (req, ctx) => {
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
-      'Content-Type': 'application/pdf',
+      'Content-Type': resume.mimeType,
       'Content-Disposition': `attachment; filename="${safeFileName(resume.fileName)}"`,
       'Content-Length': String(buffer.length),
     },

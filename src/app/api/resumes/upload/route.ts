@@ -16,6 +16,7 @@
 export const dynamic = 'force-dynamic';
 
 import fs from 'fs/promises';
+import { createHash } from 'crypto';
 import { ok, handler, requireAuth, rateLimit, logAudit, clientIp, ApiError } from '@/lib/api';
 import { db } from '@/lib/db';
 import { UPLOAD_DIR, resumeFilePath } from '@/lib/storage';
@@ -23,6 +24,7 @@ import { serializeParsedData } from '@/lib/serialize';
 import {
   validateResumeFile,
   extractResumeText,
+  extractDocxResumeText,
   safeStoredName,
   PdfParseError,
 } from '@/lib/ai/pdf-parser';
@@ -33,6 +35,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   EMPTY_FILE: 400,
   FILE_TOO_LARGE: 413,
   CORRUPTED_PDF: 400,
+  CORRUPTED_DOCX: 400,
   ENCRYPTED_PDF: 400,
   NO_EXTRACTABLE_TEXT: 422,
   TOO_MANY_PAGES: 422,
@@ -76,8 +79,17 @@ export const POST = handler(async (req) => {
   }
 
   // ---- 3. candidate profile (register creates it; defensive fallback) ----
-  const profile = await db.candidateProfile.findUnique({ where: { userId: session.sub }, select: { id: true } });
+  const profile = await db.candidateProfile.findUnique({
+    where: { userId: session.sub },
+    select: { id: true, phone: true, education: true, experienceYears: true },
+  });
   if (!profile) throw new ApiError('CANDIDATE_PROFILE_MISSING', 'No candidate profile is linked to this account', 400);
+  const contentHash = createHash('sha256').update(buffer).digest('hex');
+  const duplicate = await db.resume.findFirst({
+    where: { candidateId: profile.id, contentHash },
+    select: { id: true },
+  });
+  if (duplicate) throw new ApiError('DUPLICATE_RESUME', 'This resume has already been uploaded to your profile', 409);
 
   // ---- 4. store file outside public/ ----
   const storedName = safeStoredName(file.name);
@@ -97,7 +109,10 @@ export const POST = handler(async (req) => {
         storedName,
         filePath: resumeFilePath(storedName),
         fileSize: file.size,
-        mimeType: file.type || 'application/pdf',
+        mimeType: file.type || (file.name.toLowerCase().endsWith('.docx')
+          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          : 'application/pdf'),
+        contentHash,
         parseStatus: 'PENDING',
         isActive: true,
       },
@@ -107,7 +122,8 @@ export const POST = handler(async (req) => {
   // ---- 6. synchronous AI parse (never blocks the upload result) ----
   let finalResume = resume;
   try {
-    const { text } = await extractResumeText(buffer);
+    const isDocx = file.name.toLowerCase().endsWith('.docx');
+    const { text } = isDocx ? await extractDocxResumeText(buffer) : await extractResumeText(buffer);
     const info = extractResumeInfo(text);
     finalResume = await db.resume.update({
       where: { id: resume.id },
@@ -118,6 +134,13 @@ export const POST = handler(async (req) => {
         parsedData: JSON.stringify(info),
       },
     });
+    const profileData: { phone?: string; education?: string; experienceYears?: number } = {};
+    if (!profile.phone && info.phone) profileData.phone = info.phone;
+    if (!profile.education && info.education) profileData.education = info.education.slice(0, 300);
+    if (profile.experienceYears === 0 && info.experienceYears !== null) profileData.experienceYears = Math.floor(info.experienceYears);
+    if (Object.keys(profileData).length) {
+      await db.candidateProfile.update({ where: { id: profile.id }, data: profileData });
+    }
   } catch (err) {
     const message =
       err instanceof PdfParseError

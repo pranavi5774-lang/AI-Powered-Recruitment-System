@@ -80,7 +80,7 @@ function Navbar() {
           <Button asChild variant="ghost" className="min-h-9">
             <a href="#/login">Log in</a>
           </Button>
-          <Button asChild className="min-h-9 bg-gradient-to-r from-[oklch(0.52_0.23_293)] to-[oklch(0.55_0.15_260)] text-white hover:opacity-90">
+          <Button asChild className="btn-get-started min-h-9">
             <a href="#/register">
               Get Started
               <ArrowRight className="size-4" aria-hidden="true" />
@@ -119,7 +119,7 @@ function Navbar() {
               <Button asChild variant="outline" className="min-h-11">
                 <a href="#/login">Log in</a>
               </Button>
-              <Button asChild className="min-h-11 bg-gradient-to-r from-[oklch(0.52_0.23_293)] to-[oklch(0.55_0.15_260)] text-white hover:opacity-90">
+              <Button asChild className="btn-get-started min-h-11">
                 <a href="#/register">Get Started</a>
               </Button>
             </div>
@@ -208,17 +208,17 @@ function Hero() {
             <Radar className="size-3.5 text-primary" aria-hidden="true" />
             Academic full-stack + AI project · Explainable resume matching
           </span>
-          <h1 className="mt-6 text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
+          <h1 className="hero-text-shadow mt-6 text-4xl font-bold leading-tight tracking-tight text-white drop-shadow-lg sm:text-5xl lg:text-6xl">
             AI-Powered Recruitment &{' '}
             <span className="text-gradient">Employee Management</span>
           </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+          <p className="mx-auto mt-5 max-w-2xl text-base font-medium leading-relaxed text-white/90 drop-shadow sm:text-lg">
             HireSphere AI scores every resume against the job with explainable TF-IDF +
             cosine-similarity matching — while HR keeps full control of the pipeline, from posting
             and interviews to attendance, leave and performance.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Button asChild size="lg" className="min-h-11 w-full bg-gradient-to-r from-[oklch(0.52_0.23_293)] to-[oklch(0.55_0.15_260)] text-white hover:opacity-90 sm:w-auto">
+            <Button asChild size="lg" className="btn-get-started min-h-11 w-full sm:w-auto">
               <a href="#/register">
                 Get started free
                 <ArrowRight className="size-4" aria-hidden="true" />
@@ -241,9 +241,9 @@ function Hero() {
             { value: '4 portals', label: 'Admin · HR · Candidate · Employee' },
             { value: 'Explainable AI', label: 'Every score shows its evidence' },
           ].map((s) => (
-            <div key={s.value} role="listitem" className="glass rounded-xl px-4 py-3.5 text-center">
-              <p className="text-sm font-semibold text-foreground">{s.value}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{s.label}</p>
+            <div key={s.value} role="listitem" className="glass rounded-xl px-4 py-3.5 text-center ring-1 ring-white/10">
+              <p className="text-sm font-bold text-white drop-shadow">{s.value}</p>
+              <p className="mt-0.5 text-xs font-medium text-white/80">{s.label}</p>
             </div>
           ))}
         </motion.div>

@@ -27,16 +27,16 @@ datasource db {
 // ------------------------------------------------------------
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   passwordHash String
   name         String
-  role         String   @default("CANDIDATE") // ADMIN | HR | CANDIDATE | EMPLOYEE
-  status       String   @default("ACTIVE") // ACTIVE | SUSPENDED
+  role         String    @default("CANDIDATE") // ADMIN | HR | CANDIDATE | EMPLOYEE
+  status       String    @default("ACTIVE") // ACTIVE | SUSPENDED
   phone        String?
   lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   candidateProfile CandidateProfile?
   employee         Employee?
@@ -66,43 +66,45 @@ model PasswordResetToken {
 // ------------------------------------------------------------
 
 model CandidateProfile {
-  id             String  @id @default(cuid())
-  userId         String  @unique
-  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  phone          String?
-  location       String?
-  headline       String?
-  summary        String?
-  experienceYears Float  @default(0)
-  currentCompany String?
-  education      String?
-  linkedinUrl    String?
-  githubUrl      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone           String?
+  location        String?
+  headline        String?
+  summary         String?
+  experienceYears Float    @default(0)
+  currentCompany  String?
+  education       String?
+  linkedinUrl     String?
+  githubUrl       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   resumes      Resume[]
   applications Application[]
 }
 
 model Resume {
-  id            String   @id @default(cuid())
+  id            String           @id @default(cuid())
   candidateId   String
   candidate     CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   fileName      String // original client-side filename
-  storedName    String   @unique // safe server-side generated name
+  storedName    String           @unique // safe server-side generated name
   filePath      String // stored OUTSIDE public/ — served only via authorized API
   fileSize      Int
   mimeType      String
   extractedText String?
-  parseStatus   String   @default("PENDING") // PENDING | SUCCESS | FAILED
+  parseStatus   String           @default("PENDING") // PENDING | SUCCESS | FAILED
   parseError    String?
   parsedData    String? // JSON: {name,email,phone,skills,education,experience,certifications,projects}
-  isActive      Boolean  @default(true)
-  uploadedAt    DateTime @default(now())
+  contentHash   String?
+  isActive      Boolean          @default(true)
+  uploadedAt    DateTime         @default(now())
 
   applications Application[]
 
+  @@index([candidateId, contentHash])
   @@index([candidateId])
   @@index([parseStatus])
 }
@@ -112,8 +114,8 @@ model Resume {
 // ------------------------------------------------------------
 
 model Department {
-  id          String  @id @default(cuid())
-  name        String  @unique
+  id          String   @id @default(cuid())
+  name        String   @unique
   description String?
   createdAt   DateTime @default(now())
 
@@ -122,29 +124,33 @@ model Department {
 }
 
 model Job {
-  id             String  @id @default(cuid())
-  title          String
-  description    String
-  departmentId   String?
-  department     Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  location       String
-  employmentType String  @default("FULL_TIME") // FULL_TIME | PART_TIME | CONTRACT | INTERNSHIP
-  experienceMin  Float   @default(0) // years
-  educationReq   String?
-  requiredSkills  String @default("[]") // JSON string array (SQLite has no scalar lists)
-  preferredSkills String @default("[]") // JSON string array
-  salaryMin      Float?
-  salaryMax      Float?
-  openings       Int     @default(1)
-  status         String  @default("OPEN") // DRAFT | OPEN | CLOSED
-  createdBy      String
-  creator        User    @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  publishedAt    DateTime?
-  closedAt       DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                String      @id @default(cuid())
+  title             String
+  description       String
+  departmentId      String?
+  department        Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  location          String
+  employmentType    String      @default("FULL_TIME") // FULL_TIME | PART_TIME | CONTRACT | INTERNSHIP
+  experienceMin     Float       @default(0) // years
+  educationReq      String?
+  requiredSkills    String      @default("[]") // JSON string array (SQLite has no scalar lists)
+  preferredSkills   String      @default("[]") // JSON string array
+  evaluationWeights String      @default("{\"requiredSkills\":20,\"education\":10,\"projects\":10,\"experience\":10,\"technicalKnowledge\":10,\"certifications\":5,\"keywordMatch\":10,\"domainKnowledge\":5,\"tools\":5,\"problemSolving\":5,\"achievements\":5,\"resumeClarity\":5}")
+  matchThresholds   String      @default("{\"strong\":80,\"potential\":65,\"moderate\":50}")
+  salaryMin         Float?
+  salaryMax         Float?
+  openings          Int         @default(1)
+  status            String      @default("OPEN") // DRAFT | OPEN | CLOSED
+  createdBy         String
+  creator           User        @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  publishedAt       DateTime?
+  closedAt          DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   applications Application[]
+  requirements JobRequirement[]
+  rankings     CandidateRanking[]
 
   @@index([status])
   @@index([departmentId])
@@ -156,24 +162,28 @@ model Job {
 // ------------------------------------------------------------
 
 model Application {
-  id          String  @id @default(cuid())
+  id          String           @id @default(cuid())
   jobId       String
-  job         Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job         Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
   candidateId String
   candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   resumeId    String
-  resume      Resume  @relation(fields: [resumeId], references: [id], onDelete: Cascade)
-  status      String  @default("APPLIED") // APPLIED | UNDER_REVIEW | SHORTLISTED | INTERVIEW | SELECTED | HIRED | REJECTED | WITHDRAWN
+  resume      Resume           @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  status      String           @default("APPLIED") // APPLIED | UNDER_REVIEW | SHORTLISTED | INTERVIEW | SELECTED | HIRED | REJECTED | WITHDRAWN
   matchScore  Float? // final AI score snapshot (decision-support only, never auto-rejects)
   tfidfScore  Float?
   skillScore  Float?
   hrNotes     String?
-  appliedAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  appliedAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
-  statusHistory ApplicationStatusHistory[]
-  analyses      ResumeAnalysis[]
-  interviews    Interview[]
+  statusHistory     ApplicationStatusHistory[]
+  analyses          ResumeAnalysis[]
+  evaluationHistory EvaluationHistory[]
+  hrReviews         HRReview[]
+  interviews        Interview[]
+  evaluation        Evaluation?
+  candidateRanking  CandidateRanking?
 
   @@unique([jobId, candidateId]) // prevents duplicate applications
   @@index([status])
@@ -182,7 +192,7 @@ model Application {
 }
 
 model ApplicationStatusHistory {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   applicationId String
   application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   fromStatus    String?
@@ -191,23 +201,23 @@ model ApplicationStatusHistory {
   actorName     String
   actorRole     String
   note          String?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime    @default(now())
 
   @@index([applicationId])
   @@index([createdAt])
 }
 
 model Interview {
-  id            String   @id @default(cuid())
-  applicationId String
-  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  scheduledAt   DateTime
-  mode          String   @default("ONLINE") // ONLINE | ONSITE | PHONE
+  id             String      @id @default(cuid())
+  applicationId  String
+  application    Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  scheduledAt    DateTime
+  mode           String      @default("ONLINE") // ONLINE | ONSITE | PHONE
   locationOrLink String?
-  notes         String?
-  status        String   @default("SCHEDULED") // SCHEDULED | COMPLETED | CANCELLED
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  notes          String?
+  status         String      @default("SCHEDULED") // SCHEDULED | COMPLETED | CANCELLED
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@index([applicationId])
   @@index([scheduledAt])
@@ -218,22 +228,148 @@ model Interview {
 // ------------------------------------------------------------
 
 model ResumeAnalysis {
-  id               String   @id @default(cuid())
-  applicationId    String   @unique
-  application      Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  tfidfScore       Float // raw cosine similarity of TF-IDF vectors (0..1)
-  skillScore       Float? // required-skill overlap ratio (0..1), null when job defines no required skills
-  finalScore       Float // weighted decision-support score, formula documented in docs
-  weights          String // JSON: {"tfidf":0.6,"skill":0.4} — configurable via AI_WEIGHT_TFIDF / AI_WEIGHT_SKILL
-  matchedSkills    String // JSON: [{skill, alias, evidence}]
-  missingSkills    String // JSON: string[]
-  extraSkills      String? // JSON: string[] — skills present in resume but not required
-  extractedInfo    String? // JSON snapshot of resume-derived info used for scoring
-  summary          String? // plain-language explanation shown to HR
-  algorithmVersion String
-  createdAt        DateTime @default(now())
+  id                  String      @id @default(cuid())
+  applicationId       String      @unique
+  application         Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  tfidfScore          Float // raw cosine similarity of TF-IDF vectors (0..1)
+  skillScore          Float? // required-skill overlap ratio (0..1), null when job defines no required skills
+  finalScore          Float // weighted decision-support score, formula documented in docs
+  weights             String // JSON: {"tfidf":0.6,"skill":0.4} — configurable via AI_WEIGHT_TFIDF / AI_WEIGHT_SKILL
+  matchedSkills       String // JSON: [{skill, alias, evidence}]
+  missingSkills       String // JSON: string[]
+  extraSkills         String? // JSON: string[] — skills present in resume but not required
+  extractedInfo       String? // JSON snapshot of resume-derived info used for scoring
+  parameterScores     String      @default("[]") // JSON: 12 explainable parameter evaluations
+  parameterWeights    String      @default("{}") // JSON snapshot of configured 12-parameter weights
+  strengths           String      @default("[]") // JSON evidence-backed strengths
+  skillGaps           String      @default("[]") // JSON job requirements not evidenced in resume
+  recommendation      String      @default("LOW_MATCH")
+  detailedExplanation String?
+  summary             String? // plain-language explanation shown to HR
+  algorithmVersion    String
+  createdAt           DateTime    @default(now())
 
   @@index([applicationId])
+}
+
+model EvaluationHistory {
+  id               String      @id @default(cuid())
+  applicationId    String
+  application      Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  finalScore       Float
+  parameterScores  String
+  weights          String
+  recommendation   String
+  algorithmVersion String
+  createdAt        DateTime    @default(now())
+
+  @@index([applicationId, createdAt])
+}
+
+model HRReview {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  reviewerId    String?
+  reviewerName  String
+  reviewerRole  String
+  decision      String // APPROVED | REJECTED | OVERRIDDEN
+  reason        String?
+  comments      String?
+  createdAt     DateTime    @default(now())
+
+  @@index([applicationId, createdAt])
+}
+
+model JobRequirement {
+  id           String   @id @default(cuid())
+  jobId        String
+  job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  parameterKey String   // e.g. requiredSkills, education, experience
+  name         String
+  description  String?
+  weight       Float    @default(0)
+  isRequired   Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([jobId])
+}
+
+model EvaluationParameter {
+  id            String   @id @default(cuid())
+  key           String   @unique
+  name          String
+  defaultWeight Float
+  description   String
+  createdAt     DateTime @default(now())
+}
+
+model Evaluation {
+  id                  String   @id @default(cuid())
+  applicationId       String   @unique
+  application         Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  overallScore        Float    // 0..100
+  classification      String   // STRONG_MATCH | POTENTIAL_MATCH | MODERATE_MATCH | LOW_MATCH
+  recommendation      String   // STRONG_MATCH | POTENTIAL_MATCH | MODERATE_MATCH | LOW_MATCH
+  explanation         String?
+  strengths           String   @default("[]") // JSON string array
+  skillGaps           String   @default("[]") // JSON string array
+  missingRequirements String   @default("[]") // JSON string array
+  evaluatedAt         DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  parameterScores            ParameterScore[]
+  shortlistingRecommendation ShortlistingRecommendation?
+  ranking                    CandidateRanking?
+
+  @@index([applicationId])
+  @@index([classification])
+}
+
+model ParameterScore {
+  id            String     @id @default(cuid())
+  evaluationId  String
+  evaluation    Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  parameterKey  String
+  parameterName String
+  score         Float      // 0..100
+  weight        Float      // e.g. 20, 10, 5
+  contribution  Float      // score * weight / 100
+  explanation   String
+  evidence      String     @default("[]") // JSON string array
+  gaps          String     @default("[]") // JSON string array
+  createdAt     DateTime   @default(now())
+
+  @@index([evaluationId])
+  @@index([parameterKey])
+}
+
+model ShortlistingRecommendation {
+  id              String     @id @default(cuid())
+  evaluationId    String     @unique
+  evaluation      Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  recommendation  String     // STRONG_MATCH | POTENTIAL_MATCH | MODERATE_MATCH | LOW_MATCH
+  confidenceScore Float      @default(1.0)
+  reasons         String     @default("[]") // JSON string array
+  summary         String?
+  createdAt       DateTime   @default(now())
+}
+
+model CandidateRanking {
+  id             String      @id @default(cuid())
+  jobId          String
+  job            Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  applicationId  String      @unique
+  application    Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  evaluationId   String?     @unique
+  evaluation     Evaluation? @relation(fields: [evaluationId], references: [id], onDelete: SetNull)
+  rank           Int         @default(0)
+  score          Float       @default(0) // 0..100
+  classification String      @default("LOW_MATCH")
+  updatedAt      DateTime    @updatedAt
+
+  @@index([jobId, rank])
+  @@index([jobId, score])
 }
 
 // ------------------------------------------------------------
@@ -241,24 +377,24 @@ model ResumeAnalysis {
 // ------------------------------------------------------------
 
 model Employee {
-  id                 String  @id @default(cuid())
-  employeeCode       String  @unique // e.g. HS-EMP-0001
-  userId             String? @unique // linked login account (candidate upgraded to EMPLOYEE on hire)
-  user               User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-  name               String
-  workEmail          String  @unique
-  phone              String?
-  departmentId       String?
-  department         Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  designation        String
-  joiningDate        DateTime
-  status             String  @default("ACTIVE") // ACTIVE | ON_PROBATION | ON_LEAVE | RESIGNED | TERMINATED
-  address            String?
-  emergencyContact   String?
-  sourceApplicationId String? @unique // traceability + idempotent hire→employee conversion
-  createdById        String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                  String      @id @default(cuid())
+  employeeCode        String      @unique // e.g. HS-EMP-0001
+  userId              String?     @unique // linked login account (candidate upgraded to EMPLOYEE on hire)
+  user                User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name                String
+  workEmail           String      @unique
+  phone               String?
+  departmentId        String?
+  department          Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  designation         String
+  joiningDate         DateTime
+  status              String      @default("ACTIVE") // ACTIVE | ON_PROBATION | ON_LEAVE | RESIGNED | TERMINATED
+  address             String?
+  emergencyContact    String?
+  sourceApplicationId String?     @unique // traceability + idempotent hire→employee conversion
+  createdById         String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
 
   attendance    Attendance[]
   leaveRequests LeaveRequest[]
@@ -270,9 +406,9 @@ model Employee {
 }
 
 model Attendance {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   date        DateTime // date at 00:00 UTC
   checkIn     DateTime?
   checkOut    DateTime?
@@ -281,8 +417,8 @@ model Attendance {
   note        String?
   createdById String?
   updatedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@unique([employeeId, date]) // one entry per employee per day
   @@index([date])
@@ -290,8 +426,8 @@ model Attendance {
 }
 
 model LeaveType {
-  id          String  @id @default(cuid())
-  name        String  @unique // Annual Leave, Sick Leave, Casual Leave...
+  id          String   @id @default(cuid())
+  name        String   @unique // Annual Leave, Sick Leave, Casual Leave...
   annualQuota Float
   description String?
   createdAt   DateTime @default(now())
@@ -301,22 +437,22 @@ model LeaveType {
 }
 
 model LeaveRequest {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   employeeId     String
-  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   leaveTypeId    String
   leaveType      LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
   startDate      DateTime
   endDate        DateTime
   days           Float
   reason         String
-  status         String   @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  status         String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
   reviewedById   String?
   reviewedByName String?
   reviewedAt     DateTime?
   reviewNote     String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([employeeId])
   @@index([status])
@@ -324,14 +460,14 @@ model LeaveRequest {
 }
 
 model LeaveBalance {
-  id          String  @id @default(cuid())
+  id          String    @id @default(cuid())
   employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   leaveTypeId String
   leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
   year        Int
   quota       Float
-  used        Float    @default(0)
+  used        Float     @default(0)
 
   @@unique([employeeId, leaveTypeId, year])
   @@index([employeeId])

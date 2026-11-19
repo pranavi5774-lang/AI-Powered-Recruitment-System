@@ -46,11 +46,23 @@ type RankItem = {
   education: string | null
   resumeParseStatus: string
   appliedAt: string
+  recommendation: string
+  parameterScores: { key: string; score: number; weight: number; contribution: number }[]
+  evaluationDate: string | null
 }
 
 type RankingResponse = {
   job: { id: string; title: string; requiredSkills: string[]; preferredSkills: string[] }
   total: number
+  dashboard: {
+    totalApplications: number
+    evaluatedResumes: number
+    strongMatches: number
+    potentialMatches: number
+    moderateMatches: number
+    lowMatches: number
+    averageScore: number
+  }
   items: RankItem[]
 }
 
@@ -108,6 +120,7 @@ export function CandidateRankingPage({ params }: { params: Record<string, string
   const [minScore, setMinScore] = React.useState(0)
   const [skillFilter, setSkillFilter] = React.useState<string[]>([])
   const [statusFilter, setStatusFilter] = React.useState('ALL')
+  const [recommendationFilter, setRecommendationFilter] = React.useState('ALL')
   const [sortKey, setSortKey] = React.useState<SortKey>('matchScore')
   const reduce = useReducedMotion()
 
@@ -138,11 +151,12 @@ export function CandidateRankingPage({ params }: { params: Record<string, string
     let items = data?.items ?? []
     if (minScore > 0) items = items.filter((i) => (i.matchScore ?? 0) * 100 >= minScore)
     if (statusFilter !== 'ALL') items = items.filter((i) => i.status === statusFilter)
+    if (recommendationFilter !== 'ALL') items = items.filter((i) => i.recommendation === recommendationFilter)
     if (skillFilter.length > 0) {
       items = items.filter((i) => skillFilter.every((s) => i.matchedSkills.some((m) => m.skill === s)))
     }
     return [...items].sort(SORTERS[sortKey])
-  }, [data, minScore, statusFilter, skillFilter, sortKey])
+  }, [data, minScore, statusFilter, recommendationFilter, skillFilter, sortKey])
 
   const onExport = async () => {
     try {
@@ -217,13 +231,33 @@ export function CandidateRankingPage({ params }: { params: Record<string, string
       </div>
 
       {/* filters */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          ['Total applications', data.dashboard.totalApplications],
+          ['Evaluated resumes', data.dashboard.evaluatedResumes],
+          ['Strong matches', data.dashboard.strongMatches],
+          ['Potential matches', data.dashboard.potentialMatches],
+          ['Moderate matches', data.dashboard.moderateMatches],
+          ['Low matches', data.dashboard.lowMatches],
+          ['Average score', `${Math.round(data.dashboard.averageScore * 100)}%`],
+          ['Top-ranked candidate', filtered[0]?.candidateName ?? '—'],
+        ].map(([title, value]) => (
+          <Card key={String(title)}>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">{title}</p>
+              <p className="mt-1 truncate text-xl font-semibold tabular-nums">{value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       <motion.div
         initial={reduce ? false : { opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
       >
         <Card>
-          <CardContent className="grid gap-5 p-4 sm:grid-cols-2 lg:grid-cols-4 sm:p-6">
+          <CardContent className="grid gap-5 p-4 sm:grid-cols-2 lg:grid-cols-5 sm:p-6">
             <div className="space-y-2">
               <Label className="text-xs">Min match score: {minScore}%</Label>
               <Slider
@@ -271,6 +305,20 @@ export function CandidateRankingPage({ params }: { params: Record<string, string
               </Select>
             </div>
             <div className="space-y-2">
+              <Label className="text-xs">AI recommendation</Label>
+              <Select value={recommendationFilter} onValueChange={setRecommendationFilter}>
+                <SelectTrigger size="sm" aria-label="Recommendation filter"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All recommendations</SelectItem>
+                  <SelectItem value="STRONG_MATCH">Strong Match</SelectItem>
+                  <SelectItem value="POTENTIAL_MATCH">Potential Match</SelectItem>
+                  <SelectItem value="MODERATE_MATCH">Moderate Match</SelectItem>
+                  <SelectItem value="LOW_MATCH">Low Match</SelectItem>
+                  <SelectItem value="UNEVALUATED">Not evaluated</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label className="text-xs">Sort by</Label>
               <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
                 <SelectTrigger size="sm" aria-label="Sort by">
@@ -305,11 +353,16 @@ export function CandidateRankingPage({ params }: { params: Record<string, string
                   <TableHead className="w-10">#</TableHead>
                   <TableHead>Candidate</TableHead>
                   <TableHead className="w-44">AI match</TableHead>
+                  <TableHead className="hidden lg:table-cell">Skills</TableHead>
+                  <TableHead className="hidden lg:table-cell">Education</TableHead>
+                  <TableHead className="hidden lg:table-cell">Experience</TableHead>
+                  <TableHead>Recommendation</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="hidden lg:table-cell">Exp.</TableHead>
                   <TableHead className="hidden md:table-cell">Matched (top 3)</TableHead>
                   <TableHead className="hidden md:table-cell">Missing (top 3)</TableHead>
                   <TableHead className="hidden xl:table-cell">Applied</TableHead>
+                  <TableHead className="hidden xl:table-cell">Evaluated</TableHead>
                   <TableHead className="text-right">Screening</TableHead>
                 </TableRow>
               </TableHeader>
@@ -351,6 +404,14 @@ export function CandidateRankingPage({ params }: { params: Record<string, string
                         tf-idf {formatPercent(r.tfidfScore)} • skill {formatPercent(r.skillScore)}
                       </p>
                     </TableCell>
+                    {(['requiredSkills', 'education', 'experience'] as const).map((key) => (
+                      <TableCell key={key} className="hidden lg:table-cell">
+                        {r.parameterScores.find((parameter) => parameter.key === key)
+                          ? `${Math.round(r.parameterScores.find((parameter) => parameter.key === key)!.score)}%`
+                          : '—'}
+                      </TableCell>
+                    ))}
+                    <TableCell><Badge variant="outline">{r.recommendation === 'UNEVALUATED' ? 'Not evaluated' : label(r.recommendation)}</Badge></TableCell>
                     <TableCell>
                       <StatusBadge status={r.status} />
                     </TableCell>
@@ -365,6 +426,9 @@ export function CandidateRankingPage({ params }: { params: Record<string, string
                     </TableCell>
                     <TableCell className="hidden whitespace-nowrap xl:table-cell">
                       <span className="text-xs text-muted-foreground">{formatDate(r.appliedAt)}</span>
+                    </TableCell>
+                    <TableCell className="hidden whitespace-nowrap xl:table-cell">
+                      <span className="text-xs text-muted-foreground">{r.evaluationDate ? formatDate(r.evaluationDate) : '—'}</span>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button

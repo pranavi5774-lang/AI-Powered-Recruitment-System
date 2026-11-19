@@ -187,7 +187,7 @@ bun run db:push
 bun run src/scripts/seed.ts
 
 # 6. Start the dev server
-bun run dev                       # → http://localhost:3000
+bun run dev                       # → http://localhost:7000
 ```
 
 ### Environment variables (`.env`)
@@ -254,5 +254,6 @@ MIT — see `LICENSE`. You may use this code for learning and portfolios with at
 <div align="center">
 <sub>Built as an academic full-stack + AI project · Explainable by design</sub>
 </div>
-#   A I - P o w e r e d - R e c r u i t m e n t - S y s t e m  
+#   A I - P o w e r e d - R e c r u i t m e n t - S y s t e m 
+ 
  

@@ -20,7 +20,7 @@
 // ============================================================
 
 import { normalizeText, splitSentences, extractSection } from './text-preprocessing';
-import { findSkillsInText, type SkillHit } from './skill-dictionary';
+import { findSkillsInText, getSkill, type SkillHit } from './skill-dictionary';
 import { buildTfidf, cosineSimilarity, topSharedTerms } from './tfidf';
 import { AI_WEIGHT_SKILL, AI_WEIGHT_TFIDF, AI_ALGORITHM_VERSION } from '../constants';
 
@@ -156,7 +156,15 @@ export interface ExtractedResumeInfo {
   experienceYears: number | null;
   certifications: string | null;
   projects: string | null;
+  academicCourses: string | null;
+  internshipExperience: string | null;
+  workExperience: string | null;
+  achievements: string | null;
   skills: string[];
+  programmingLanguages: string[];
+  frameworks: string[];
+  technologies: string[];
+  tools: string[];
   wordCount: number;
 }
 
@@ -198,8 +206,15 @@ export function extractResumeInfo(rawText: string): ExtractedResumeInfo {
 
   const certifications = extractSection(text, ['certifications', 'certificates', 'licenses']);
   const projects = extractSection(text, ['projects', 'academic projects', 'key projects', 'personal projects']);
+  const academicCourses = extractSection(text, ['relevant coursework', 'coursework', 'academic courses']);
+  const internshipExperience = extractSection(text, ['internships', 'internship experience', 'internship']);
+  const workExperience = extractSection(text, ['work experience', 'professional experience', 'employment history']);
+  const achievements = extractSection(text, ['achievements', 'accomplishments', 'awards', 'honors']);
 
   const skillHits = findSkillsInText(text, sentences);
+  const skillsByCategory = (categories: string[]) => skillHits
+    .filter((hit) => categories.includes(getSkill(hit.skill)?.category ?? ''))
+    .map((hit) => hit.skill);
 
   return {
     name,
@@ -210,7 +225,15 @@ export function extractResumeInfo(rawText: string): ExtractedResumeInfo {
     experienceYears,
     certifications,
     projects,
+    academicCourses,
+    internshipExperience,
+    workExperience,
+    achievements,
     skills: skillHits.map((h) => h.skill),
+    programmingLanguages: skillsByCategory(['LANGUAGE']),
+    frameworks: skillsByCategory(['FRAMEWORK']),
+    technologies: skillsByCategory(['DATABASE', 'CLOUD', 'CONCEPT']),
+    tools: skillsByCategory(['TOOL']),
     wordCount: text.split(/\s+/).filter(Boolean).length,
   };
 }

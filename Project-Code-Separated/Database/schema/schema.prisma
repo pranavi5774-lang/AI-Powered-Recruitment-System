@@ -1,0 +1,400 @@
+// ============================================================
+// HireSphere AI — Database Schema (Prisma ORM / SQLite)
+// ------------------------------------------------------------
+// NOTE ON DATABASE ENGINE:
+// The sandbox runtime provides SQLite. The schema is written to be
+// portable to MySQL: change datasource provider to "mysql" and update
+// DATABASE_URL. All relations, unique constraints and indexes below
+// map 1:1 to MySQL DDL. See docs/database.md for details.
+//
+// NOTE ON ENUMS: Prisma enums are not supported on SQLite, so status
+// fields use String columns validated at the application layer
+// (src/lib/constants.ts). On MySQL these can be converted to native
+// ENUM types without data changes.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------
+// 1. Users & Auth
+// ------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("CANDIDATE") // ADMIN | HR | CANDIDATE | EMPLOYEE
+  status       String   @default("ACTIVE") // ACTIVE | SUSPENDED
+  phone        String?
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  candidateProfile CandidateProfile?
+  employee         Employee?
+  resetTokens      PasswordResetToken[]
+  notifications    Notification[]
+  jobsCreated      Job[]
+  reviewsGiven     PerformanceReview[]
+
+  @@index([role])
+  @@index([status])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ------------------------------------------------------------
+// 2. Candidate profile & resumes
+// ------------------------------------------------------------
+
+model CandidateProfile {
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone          String?
+  location       String?
+  headline       String?
+  summary        String?
+  experienceYears Float  @default(0)
+  currentCompany String?
+  education      String?
+  linkedinUrl    String?
+  githubUrl      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  resumes      Resume[]
+  applications Application[]
+}
+
+model Resume {
+  id            String   @id @default(cuid())
+  candidateId   String
+  candidate     CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  fileName      String // original client-side filename
+  storedName    String   @unique // safe server-side generated name
+  filePath      String // stored OUTSIDE public/ — served only via authorized API
+  fileSize      Int
+  mimeType      String
+  extractedText String?
+  parseStatus   String   @default("PENDING") // PENDING | SUCCESS | FAILED
+  parseError    String?
+  parsedData    String? // JSON: {name,email,phone,skills,education,experience,certifications,projects}
+  isActive      Boolean  @default(true)
+  uploadedAt    DateTime @default(now())
+
+  applications Application[]
+
+  @@index([candidateId])
+  @@index([parseStatus])
+}
+
+// ------------------------------------------------------------
+// 3. Jobs
+// ------------------------------------------------------------
+
+model Department {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  jobs      Job[]
+  employees Employee[]
+}
+
+model Job {
+  id             String  @id @default(cuid())
+  title          String
+  description    String
+  departmentId   String?
+  department     Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  location       String
+  employmentType String  @default("FULL_TIME") // FULL_TIME | PART_TIME | CONTRACT | INTERNSHIP
+  experienceMin  Float   @default(0) // years
+  educationReq   String?
+  requiredSkills  String @default("[]") // JSON string array (SQLite has no scalar lists)
+  preferredSkills String @default("[]") // JSON string array
+  salaryMin      Float?
+  salaryMax      Float?
+  openings       Int     @default(1)
+  status         String  @default("OPEN") // DRAFT | OPEN | CLOSED
+  createdBy      String
+  creator        User    @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  publishedAt    DateTime?
+  closedAt       DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  applications Application[]
+
+  @@index([status])
+  @@index([departmentId])
+  @@index([createdBy])
+}
+
+// ------------------------------------------------------------
+// 4. Applications & recruitment pipeline
+// ------------------------------------------------------------
+
+model Application {
+  id          String  @id @default(cuid())
+  jobId       String
+  job         Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  resumeId    String
+  resume      Resume  @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  status      String  @default("APPLIED") // APPLIED | UNDER_REVIEW | SHORTLISTED | INTERVIEW | SELECTED | HIRED | REJECTED | WITHDRAWN
+  matchScore  Float? // final AI score snapshot (decision-support only, never auto-rejects)
+  tfidfScore  Float?
+  skillScore  Float?
+  hrNotes     String?
+  appliedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  statusHistory ApplicationStatusHistory[]
+  analyses      ResumeAnalysis[]
+  interviews    Interview[]
+
+  @@unique([jobId, candidateId]) // prevents duplicate applications
+  @@index([status])
+  @@index([jobId])
+  @@index([candidateId])
+}
+
+model ApplicationStatusHistory {
+  id            String   @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStatus    String?
+  toStatus      String
+  actorId       String? // denormalized on purpose: keeps history even if user is deleted
+  actorName     String
+  actorRole     String
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@index([applicationId])
+  @@index([createdAt])
+}
+
+model Interview {
+  id            String   @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  scheduledAt   DateTime
+  mode          String   @default("ONLINE") // ONLINE | ONSITE | PHONE
+  locationOrLink String?
+  notes         String?
+  status        String   @default("SCHEDULED") // SCHEDULED | COMPLETED | CANCELLED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([applicationId])
+  @@index([scheduledAt])
+}
+
+// ------------------------------------------------------------
+// 5. AI resume analysis
+// ------------------------------------------------------------
+
+model ResumeAnalysis {
+  id               String   @id @default(cuid())
+  applicationId    String   @unique
+  application      Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  tfidfScore       Float // raw cosine similarity of TF-IDF vectors (0..1)
+  skillScore       Float? // required-skill overlap ratio (0..1), null when job defines no required skills
+  finalScore       Float // weighted decision-support score, formula documented in docs
+  weights          String // JSON: {"tfidf":0.6,"skill":0.4} — configurable via AI_WEIGHT_TFIDF / AI_WEIGHT_SKILL
+  matchedSkills    String // JSON: [{skill, alias, evidence}]
+  missingSkills    String // JSON: string[]
+  extraSkills      String? // JSON: string[] — skills present in resume but not required
+  extractedInfo    String? // JSON snapshot of resume-derived info used for scoring
+  summary          String? // plain-language explanation shown to HR
+  algorithmVersion String
+  createdAt        DateTime @default(now())
+
+  @@index([applicationId])
+}
+
+// ------------------------------------------------------------
+// 6. Employees, attendance, leave, performance
+// ------------------------------------------------------------
+
+model Employee {
+  id                 String  @id @default(cuid())
+  employeeCode       String  @unique // e.g. HS-EMP-0001
+  userId             String? @unique // linked login account (candidate upgraded to EMPLOYEE on hire)
+  user               User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name               String
+  workEmail          String  @unique
+  phone              String?
+  departmentId       String?
+  department         Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  designation        String
+  joiningDate        DateTime
+  status             String  @default("ACTIVE") // ACTIVE | ON_PROBATION | ON_LEAVE | RESIGNED | TERMINATED
+  address            String?
+  emergencyContact   String?
+  sourceApplicationId String? @unique // traceability + idempotent hire→employee conversion
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  attendance    Attendance[]
+  leaveRequests LeaveRequest[]
+  leaveBalances LeaveBalance[]
+  reviews       PerformanceReview[]
+
+  @@index([departmentId])
+  @@index([status])
+}
+
+model Attendance {
+  id          String   @id @default(cuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date        DateTime // date at 00:00 UTC
+  checkIn     DateTime?
+  checkOut    DateTime?
+  status      String // PRESENT | ABSENT | LATE | HALF_DAY | LEAVE | WFH | HOLIDAY
+  workHours   Float?
+  note        String?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([employeeId, date]) // one entry per employee per day
+  @@index([date])
+  @@index([employeeId])
+}
+
+model LeaveType {
+  id          String  @id @default(cuid())
+  name        String  @unique // Annual Leave, Sick Leave, Casual Leave...
+  annualQuota Float
+  description String?
+  createdAt   DateTime @default(now())
+
+  leaveRequests LeaveRequest[]
+  leaveBalances LeaveBalance[]
+}
+
+model LeaveRequest {
+  id             String   @id @default(cuid())
+  employeeId     String
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId    String
+  leaveType      LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  startDate      DateTime
+  endDate        DateTime
+  days           Float
+  reason         String
+  status         String   @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
+  reviewedById   String?
+  reviewedByName String?
+  reviewedAt     DateTime?
+  reviewNote     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([leaveTypeId])
+}
+
+model LeaveBalance {
+  id          String  @id @default(cuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  year        Int
+  quota       Float
+  used        Float    @default(0)
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([employeeId])
+}
+
+model PerformanceReview {
+  id             String   @id @default(cuid())
+  employeeId     String
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  reviewerId     String? // User who authored the review
+  reviewer       User?    @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewerName   String
+  period         String // e.g. "2025-H1"
+  reviewDate     DateTime
+  rating         Int // 1..5, defined criteria in docs
+  goals          String
+  achievements   String
+  feedback       String
+  strengths      String?
+  areasToImprove String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([employeeId])
+}
+
+// ------------------------------------------------------------
+// 7. Notifications, audit, settings
+// ------------------------------------------------------------
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("SYSTEM") // APPLICATION_UPDATE | LEAVE_UPDATE | INTERVIEW | HR_ACTION | SYSTEM
+  link      String? // in-app hash route, e.g. #/portal/applications
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String? // denormalized actor snapshot for tamper-tolerant history
+  actorName  String
+  actorRole  String
+  action     String // e.g. USER_CREATED, JOB_PUBLISHED, APPLICATION_STATUS_CHANGED...
+  entityType String // USER | JOB | APPLICATION | EMPLOYEE | ATTENDANCE | LEAVE | PERFORMANCE | AUTH | SYSTEM
+  entityId   String?
+  details    String? // JSON string — never contains passwords or tokens
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}

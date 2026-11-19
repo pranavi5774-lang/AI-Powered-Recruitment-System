@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: recruitment-app
+    ports:
+      - "7000:7000"
+    environment:
+      - DATABASE_URL=file:./dev.db
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - NEXT_PUBLIC_APP_URL=http://localhost:7000
+      - APIKEY=${APIKEY}
+    volumes:
+      # Persist the SQLite database across restarts
+      - db_data:/app/prisma
+    restart: unless-stopped
+
+volumes:
+  db_data:

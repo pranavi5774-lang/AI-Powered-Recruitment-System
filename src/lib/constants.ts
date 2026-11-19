@@ -66,12 +66,29 @@ export const RESUME_PARSE_STATUS = ['PENDING', 'SUCCESS', 'FAILED'] as const;
 
 /** Upload constraints */
 export const RESUME_MAX_SIZE = 5 * 1024 * 1024; // 5 MB
-export const RESUME_MIME_TYPES = ['application/pdf'];
+export const RESUME_MIME_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
 
 /** AI scoring — configurable, explainable, documented in docs/architecture.md */
 export const AI_WEIGHT_TFIDF = Number(process.env.AI_WEIGHT_TFIDF ?? 0.6);
 export const AI_WEIGHT_SKILL = Number(process.env.AI_WEIGHT_SKILL ?? 0.4);
-export const AI_ALGORITHM_VERSION = 'tfidf-cosine-v1.0';
+export const AI_ALGORITHM_VERSION = 'multi-parameter-v1.0';
+
+export const DEFAULT_EVALUATION_WEIGHTS = {
+  requiredSkills: 20,
+  education: 10,
+  projects: 10,
+  experience: 10,
+  technicalKnowledge: 10,
+  certifications: 5,
+  keywordMatch: 10,
+  domainKnowledge: 5,
+  tools: 5,
+  problemSolving: 5,
+  achievements: 5,
+  resumeClarity: 5,
+} as const;
+
+export const DEFAULT_MATCH_THRESHOLDS = { strong: 80, potential: 65, moderate: 50 } as const;
 
 export const LABELS: Record<string, string> = {
   APPLIED: 'Applied',

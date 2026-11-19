@@ -30,8 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files
+.env
+.env*.local
+.env.production
+.env.development
+!.env.example
 
 # vercel
 .vercel
@@ -57,3 +61,10 @@ uploads/
 db/*.db
 dev.log
 server.log
+
+# ignore nested clone, deliverables archives, and temp files
+HireSphere-AI/
+Review-2-Deliverables/Backend-Code/
+Review-2-Deliverables/Database-Code/
+Review-2-Deliverables/Frontend-Code/
+*.zip

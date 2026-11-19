@@ -24,6 +24,9 @@ interface RankItem {
   education: string | null;
   resumeParseStatus: string;
   appliedAt: Date;
+  recommendation: string;
+  parameterScores: { key: string; score: number; weight: number; contribution: number }[];
+  evaluationDate: Date | null;
 }
 
 export const GET = handler(async (req, ctx) => {
@@ -72,8 +75,22 @@ export const GET = handler(async (req, ctx) => {
       education: info?.education ?? a.candidate.education ?? null,
       resumeParseStatus: a.resume.parseStatus,
       appliedAt: a.appliedAt,
+      recommendation: analysis?.recommendation ?? 'UNEVALUATED',
+      parameterScores: analysis?.parameterScores ?? [],
+      evaluationDate: analysis?.createdAt ?? null,
     };
   });
+
+  const dashboard = {
+    totalApplications: items.length,
+    evaluatedResumes: items.filter((item) => item.recommendation !== 'UNEVALUATED').length,
+    strongMatches: items.filter((item) => item.recommendation === 'STRONG_MATCH').length,
+    potentialMatches: items.filter((item) => item.recommendation === 'POTENTIAL_MATCH').length,
+    moderateMatches: items.filter((item) => item.recommendation === 'MODERATE_MATCH').length,
+    lowMatches: items.filter((item) => item.recommendation === 'LOW_MATCH').length,
+    averageScore: items.filter((item) => item.matchScore !== null).reduce((sum, item) => sum + (item.matchScore ?? 0), 0) /
+      Math.max(1, items.filter((item) => item.matchScore !== null).length),
+  };
 
   // ---- filters ----
   if (minScore !== null) items = items.filter((i) => i.matchScore !== null && i.matchScore >= minScore);
@@ -121,6 +138,7 @@ export const GET = handler(async (req, ctx) => {
   return ok({
     job: { id: job.id, title: job.title, ...serializeJobSkills(job) },
     total: items.length,
+    dashboard,
     items,
   });
 });

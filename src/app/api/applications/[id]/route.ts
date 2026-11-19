@@ -19,6 +19,8 @@ export const GET = handler(async (req, ctx) => {
       analyses: { take: 1 },
       statusHistory: { orderBy: { createdAt: 'asc' } },
       interviews: { orderBy: { scheduledAt: 'asc' } },
+      hrReviews: { orderBy: { createdAt: 'desc' } },
+      evaluationHistory: { orderBy: { createdAt: 'desc' }, take: 20 },
     },
   });
   if (!application) throw new ApiError('APPLICATION_NOT_FOUND', 'Application not found', 404);
@@ -28,7 +30,7 @@ export const GET = handler(async (req, ctx) => {
     throw new ApiError('FORBIDDEN', 'You can only view your own applications', 403);
   }
 
-  const { job, resume, analyses, statusHistory, interviews, candidate, ...rest } = application;
+  const { job, resume, analyses, statusHistory, interviews, hrReviews, evaluationHistory, candidate, ...rest } = application;
   return ok({
     ...rest,
     hrNotes: isStaff ? rest.hrNotes : undefined,
@@ -56,5 +58,11 @@ export const GET = handler(async (req, ctx) => {
     analysis: serializeAnalysis(analyses[0] ?? null),
     statusHistory,
     interviews,
+    hrReviews: isStaff ? hrReviews : [],
+    evaluationHistory: evaluationHistory.map((entry) => ({
+      ...entry,
+      parameterScores: JSON.parse(entry.parameterScores),
+      weights: JSON.parse(entry.weights),
+    })),
   });
 });

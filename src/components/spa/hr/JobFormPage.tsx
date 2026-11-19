@@ -16,7 +16,7 @@ import { ArrowLeft, Briefcase, Loader2, Plus, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { get, post, patch } from '@/lib/api-client'
-import { EMPLOYMENT_TYPES } from '@/lib/constants'
+import { DEFAULT_EVALUATION_WEIGHTS, DEFAULT_MATCH_THRESHOLDS, EMPLOYMENT_TYPES } from '@/lib/constants'
 import { PageHeader } from '@/components/spa/shared/PageHeader'
 import { ErrorState } from '@/components/spa/shared/EmptyState'
 import { Spinner } from '@/components/spa/shared/Spinner'
@@ -44,6 +44,8 @@ type LoadedJob = {
   educationReq: string | null
   requiredSkills: string[]
   preferredSkills: string[]
+  evaluationWeights: Record<string, number>
+  matchThresholds: { strong: number; potential: number; moderate: number }
   salaryMin: number | null
   salaryMax: number | null
   openings: number | null
@@ -60,6 +62,13 @@ const formSchema = z.object({
   educationReq: z.string().trim().max(200).optional(),
   requiredSkills: z.array(z.string().trim().min(1).max(60)).max(15, 'At most 15 skills'),
   preferredSkills: z.array(z.string().trim().min(1).max(60)).max(15, 'At most 15 skills'),
+  evaluationWeights: z.record(z.string(), z.coerce.number().int().min(0).max(100))
+    .refine((weights) => Object.keys(weights).length === 12 && Object.values(weights).reduce((sum, value) => sum + value, 0) === 100, 'The 12 evaluation weights must total 100%.'),
+  matchThresholds: z.object({
+    strong: z.coerce.number().int().min(1).max(100),
+    potential: z.coerce.number().int().min(1).max(99),
+    moderate: z.coerce.number().int().min(0).max(98),
+  }).refine((values) => values.strong > values.potential && values.potential > values.moderate, 'Thresholds must descend from strong to moderate.'),
   salaryMin: z.coerce.number().min(0).optional(),
   salaryMax: z.coerce.number().min(0).optional(),
   openings: z.coerce.number().int().min(1, 'At least 1 opening').max(100).default(1),
@@ -187,6 +196,8 @@ export function JobFormPage({ params }: { params: Record<string, string> }) {
       educationReq: '',
       requiredSkills: [],
       preferredSkills: [],
+      evaluationWeights: { ...DEFAULT_EVALUATION_WEIGHTS },
+      matchThresholds: { ...DEFAULT_MATCH_THRESHOLDS },
       salaryMin: undefined,
       salaryMax: undefined,
       openings: 1,
@@ -200,9 +211,12 @@ export function JobFormPage({ params }: { params: Record<string, string> }) {
 
   const requiredSkills = watch('requiredSkills') ?? []
   const preferredSkills = watch('preferredSkills') ?? []
+  const evaluationWeights = watch('evaluationWeights')
+  const matchThresholds = watch('matchThresholds')
   const departmentId = watch('departmentId')
   const employmentType = watch('employmentType')
   const jobStatus = watch('status')
+  const weightTotal = Object.values(evaluationWeights ?? {}).reduce<number>((sum, value) => sum + Number(value || 0), 0)
 
   React.useEffect(() => {
     const loadDepts = async () => {
@@ -235,6 +249,8 @@ export function JobFormPage({ params }: { params: Record<string, string> }) {
           educationReq: job.educationReq ?? '',
           requiredSkills: job.requiredSkills ?? [],
           preferredSkills: job.preferredSkills ?? [],
+          evaluationWeights: job.evaluationWeights ?? { ...DEFAULT_EVALUATION_WEIGHTS },
+          matchThresholds: job.matchThresholds ?? { ...DEFAULT_MATCH_THRESHOLDS },
           salaryMin: job.salaryMin ?? undefined,
           salaryMax: job.salaryMax ?? undefined,
           openings: job.openings ?? 1,
@@ -422,6 +438,59 @@ export function JobFormPage({ params }: { params: Record<string, string> }) {
                 />
                 {err(errors.preferredSkills?.message as string | undefined)}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Explainable evaluation settings</CardTitle>
+              <CardDescription>
+                Customize this role's 12 scoring weights. The total must remain 100%. Scores support human review only.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {Object.keys(DEFAULT_EVALUATION_WEIGHTS).map((key) => (
+                  <div key={key} className="grid grid-cols-[1fr_5rem] items-center gap-3">
+                    <Label htmlFor={`weight-${key}`} className="text-sm">
+                      {key.replace(/[A-Z]/g, (letter) => ` ${letter}`).replace(/^./, (letter) => letter.toUpperCase())}
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id={`weight-${key}`}
+                        type="number"
+                        min={0}
+                        max={100}
+                        {...register(`evaluationWeights.${key}` as `evaluationWeights.${string}`)}
+                        aria-label={`${key} weight percentage`}
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className={cn('text-xs font-medium', weightTotal === 100 ? 'text-[var(--success)]' : 'text-destructive')}>
+                Weight total: {weightTotal}% (must equal 100%)
+              </p>
+              {err(errors.evaluationWeights?.message as string | undefined)}
+              <div className="grid gap-3 sm:grid-cols-3">
+                {(['strong', 'potential', 'moderate'] as const).map((level) => (
+                  <div key={level} className="grid gap-2">
+                    <Label htmlFor={`threshold-${level}`}>{level[0].toUpperCase() + level.slice(1)} match from (%)</Label>
+                    <Input
+                      id={`threshold-${level}`}
+                      type="number"
+                      min={0}
+                      max={100}
+                      {...register(`matchThresholds.${level}`)}
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Strong ≥ {Number(matchThresholds?.strong ?? DEFAULT_MATCH_THRESHOLDS.strong)}, potential ≥ {Number(matchThresholds?.potential ?? DEFAULT_MATCH_THRESHOLDS.potential)}, moderate ≥ {Number(matchThresholds?.moderate ?? DEFAULT_MATCH_THRESHOLDS.moderate)}; lower scores are low matches.
+              </p>
+              {err(errors.matchThresholds?.message as string | undefined)}
             </CardContent>
           </Card>
         </div>

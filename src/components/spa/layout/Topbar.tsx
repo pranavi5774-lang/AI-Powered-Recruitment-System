@@ -9,7 +9,7 @@
 
 import * as React from 'react'
 import { useTheme } from 'next-themes'
-import { Bell, CheckCheck, LogOut, Menu, BellOff, SunMoon } from 'lucide-react'
+import { Bell, Check, CheckCheck, LogOut, Menu, BellOff, Palette, SunMoon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -202,6 +202,14 @@ function NotificationBell() {
 
 function UserMenu({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const { resolvedTheme, setTheme } = useTheme()
+  const themeOptions = [
+    { key: 'dark', label: 'Dark' },
+    { key: 'light', label: 'Light' },
+    { key: 'aurora', label: 'Aurora' },
+    { key: 'sunset', label: 'Sunset' },
+    { key: 'forest', label: 'Forest' },
+  ]
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -225,8 +233,48 @@ function UserMenu({ user, onLogout }: { user: AuthUser; onLogout: () => void }) 
           <p className="text-xs font-normal text-muted-foreground">{user.email}</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <div className="px-2 py-1.5">
+          <p className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            <Palette className="size-3.5" aria-hidden="true" />
+            Theme
+          </p>
+          <div className="space-y-1">
+            {themeOptions.map((theme) => {
+              const isActive = (resolvedTheme ?? 'dark') === theme.key
+
+              return (
+                <button
+                  key={theme.key}
+                  type="button"
+                  onClick={() => setTheme(theme.key)}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent',
+                    isActive && 'bg-accent/80',
+                  )}
+                >
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        'size-2.5 rounded-full border border-current',
+                        theme.key === 'dark' && 'bg-slate-950',
+                        theme.key === 'light' && 'bg-slate-100',
+                        theme.key === 'aurora' && 'bg-violet-400',
+                        theme.key === 'sunset' && 'bg-orange-400',
+                        theme.key === 'forest' && 'bg-emerald-500',
+                      )}
+                      aria-hidden="true"
+                    />
+                    {theme.label}
+                  </span>
+                  {isActive && <Check className="size-4" aria-hidden="true" />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+          onClick={() => setTheme((resolvedTheme ?? 'dark') === 'dark' ? 'light' : 'dark')}
         >
           <SunMoon className="size-4" aria-hidden="true" />
           {resolvedTheme === 'dark' ? 'Switch to light' : 'Switch to dark'}

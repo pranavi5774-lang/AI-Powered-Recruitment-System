@@ -8,7 +8,8 @@ import { z } from 'zod';
 import { ok, handler, getSession, requireAuth, parseBody, logAudit, ApiError, clientIp } from '@/lib/api';
 import { db } from '@/lib/db';
 import { JOB_STATUS, EMPLOYMENT_TYPES } from '@/lib/constants';
-import { serializeJobSkills } from '@/lib/serialize';
+import { serializeJobEvaluation, serializeJobSkills } from '@/lib/serialize';
+import { DEFAULT_EVALUATION_WEIGHTS } from '@/lib/constants';
 
 async function loadJobWithMeta(id: string) {
   const job = await db.job.findUnique({
@@ -32,8 +33,17 @@ export const GET = handler(async (req, ctx) => {
     const isStaff = session?.role === 'HR' || session?.role === 'ADMIN';
     if (!isStaff) throw new ApiError('JOB_NOT_FOUND', 'Job not found', 404); // don't leak drafts
   }
-  return ok({ ...job, ...serializeJobSkills(job) });
+  return ok({ ...job, ...serializeJobSkills(job), ...serializeJobEvaluation(job) });
 });
+
+const weightKeys = Object.keys(DEFAULT_EVALUATION_WEIGHTS);
+const evaluationWeightsSchema = z.record(z.string(), z.number().int().min(0).max(100))
+  .refine((weights) => Object.keys(weights).length === weightKeys.length && weightKeys.every((key) => key in weights) && Object.values(weights).reduce((sum, weight) => sum + weight, 0) === 100, 'Evaluation weights must include all 12 parameters and total 100');
+const matchThresholdsSchema = z.object({
+  strong: z.number().int().min(1).max(100),
+  potential: z.number().int().min(1).max(99),
+  moderate: z.number().int().min(0).max(98),
+}).refine((thresholds) => thresholds.strong > thresholds.potential && thresholds.potential > thresholds.moderate, 'Thresholds must descend from strong to moderate');
 
 const patchSchema = z.object({
   title: z.string().trim().min(3).max(120).optional(),
@@ -45,6 +55,8 @@ const patchSchema = z.object({
   educationReq: z.string().trim().max(200).nullish(),
   requiredSkills: z.array(z.string().trim().min(1).max(60)).max(15).optional(),
   preferredSkills: z.array(z.string().trim().min(1).max(60)).max(15).optional(),
+  evaluationWeights: evaluationWeightsSchema.optional(),
+  matchThresholds: matchThresholdsSchema.optional(),
   salaryMin: z.coerce.number().min(0).nullish(),
   salaryMax: z.coerce.number().min(0).nullish(),
   openings: z.coerce.number().int().min(1).max(100).optional(),
@@ -74,6 +86,8 @@ export const PATCH = handler(async (req, ctx) => {
   if (body.educationReq !== undefined) data.educationReq = body.educationReq ?? null;
   if (body.requiredSkills !== undefined) data.requiredSkills = JSON.stringify(body.requiredSkills);
   if (body.preferredSkills !== undefined) data.preferredSkills = JSON.stringify(body.preferredSkills);
+  if (body.evaluationWeights !== undefined) data.evaluationWeights = JSON.stringify(body.evaluationWeights);
+  if (body.matchThresholds !== undefined) data.matchThresholds = JSON.stringify(body.matchThresholds);
   if (body.salaryMin !== undefined) data.salaryMin = body.salaryMin ?? null;
   if (body.salaryMax !== undefined) data.salaryMax = body.salaryMax ?? null;
   if (body.openings !== undefined) data.openings = body.openings;
@@ -106,7 +120,7 @@ export const PATCH = handler(async (req, ctx) => {
   if (published) await logAudit({ actor, action: 'JOB_PUBLISHED', entityType: 'JOB', entityId: id, details: { title: updated.title }, ip: clientIp(req) });
   if (closed) await logAudit({ actor, action: 'JOB_CLOSED', entityType: 'JOB', entityId: id, details: { title: updated.title }, ip: clientIp(req) });
 
-  return ok({ ...updated, ...serializeJobSkills(updated) });
+  return ok({ ...updated, ...serializeJobSkills(updated), ...serializeJobEvaluation(updated) });
 });
 
 export const DELETE = handler(async (req, ctx) => {
